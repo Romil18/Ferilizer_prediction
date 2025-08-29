@@ -1,217 +1,141 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import cross_val_score
+import joblib
 import plotly.express as px
-from sklearn.preprocessing import LabelEncoder
-from sklearn.metrics import accuracy_score
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 
-# st.set_page_config(page_title="Fertilizer Predictor", page_icon="🌱", layout="wide")
+# -------------------------
+# Page Config
+# -------------------------
+st.set_page_config(page_title="🌱 Fertilizer Predictor", layout="wide")
 
-# --- Custom CSS for background and card styling ---
-st.markdown(
-    """
-    <style>
-    body {
-        background: linear-gradient(120deg, #e0c3fc 0%, #8ec5fc 100%) !important;
-    }
-    .main {
-        background-color: rgba(255,255,255,0.85) !important;
-        border-radius: 18px;
-        padding: 2rem 2rem 1rem 2rem;
-        box-shadow: 0 4px 24px 0 rgba(34, 139, 230, 0.15);
-        margin-top: 2rem;
-    }
-    .stButton>button {
-        background: linear-gradient(90deg, #43e97b 0%, #38f9d7 100%);
-        color: white;
-        font-weight: bold;
-        border-radius: 8px;
-        border: none;
-        padding: 0.5rem 2rem;
-        font-size: 1.1rem;
-    }
-    .stButton>button:hover {
-        background: linear-gradient(90deg, #38f9d7 0%, #43e97b 100%);
-        color: #222;
-    }
-    .result-card {
-        background: #fffbe7;
-        border-radius: 12px;
-        padding: 1.5rem;
-        box-shadow: 0 2px 12px 0 rgba(255, 193, 7, 0.15);
-        margin-top: 1.5rem;
-        text-align: center;
-        font-size: 1.3rem;
-    }
-    .accuracy {
-        color: #388e3c;
-        font-weight: bold;
-        font-size: 1.1rem;
-    }
-    .confidence {
-        color: #1976d2;
-        font-weight: bold;
-        font-size: 1rem;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+# -------------------------
+# Load Model & Encoders
+# -------------------------
+model = joblib.load("model/fertilizer_model.pkl")
+le_soil = joblib.load("model/soil_encoder.pkl")
+le_crop = joblib.load("model/crop_encoder.pkl")
+le_fert = joblib.load("model/fert_encoder.pkl")
 
-# Load and prepare data
-@st.cache_data
-def load_data():
-    data = pd.read_csv('cleaned_fertilizer_data.csv')
-    data.columns = [col.strip() for col in data.columns]
-    return data
-
-data = load_data()
-
-# Features and target for new dataset
-features = ['Temparature', 'Humidity', 'Moisture', 'Soil Type', 'Crop Type', 'Nitrogen', 'Potassium', 'Phosphorous']
-target = 'Fertilizer Name'
-
-# Encode categorical features
-le_soil = LabelEncoder()
-le_crop = LabelEncoder()
-le_fert = LabelEncoder()
-data['Soil Type_enc'] = le_soil.fit_transform(data['Soil Type'])
-data['Crop Type_enc'] = le_crop.fit_transform(data['Crop Type'])
-data['Fertilizer Name_enc'] = le_fert.fit_transform(data['Fertilizer Name'])
-
-X = data[['Temparature', 'Humidity', 'Moisture', 'Soil Type_enc', 'Crop Type_enc', 'Nitrogen', 'Potassium', 'Phosphorous']]
-y = data['Fertilizer Name_enc']
-
-# Train model with better parameters
-@st.cache_resource
-def train_model():
-    model = RandomForestClassifier(
-        n_estimators=200,
-        max_depth=10,
-        min_samples_split=5,
-        min_samples_leaf=2,
-        random_state=42
-    )
-    cv_scores = cross_val_score(model, X, y, cv=5)
-    model.fit(X, y)
-    # Training accuracy
-    train_preds = model.predict(X)
-    train_acc = accuracy_score(y, train_preds)
-    return model, cv_scores, train_acc
-
-model, cv_scores, train_acc = train_model()
-
-# Get feature importance
-feature_importance = pd.DataFrame({
-    'feature': ['Temparature', 'Humidity', 'Moisture', 'Soil Type', 'Crop Type', 'Nitrogen', 'Potassium', 'Phosphorous'],
-    'importance': model.feature_importances_
-}).sort_values('importance', ascending=False)
-
-# Fertilizer label mapping (string names)
-def safe_list(val):
-    if val is None:
-        return []
-    try:
-        return list(val)
-    except Exception:
-        return []
-soil_classes = safe_list(getattr(le_soil, 'classes_', None))
-crop_classes = safe_list(getattr(le_crop, 'classes_', None))
-fert_classes = safe_list(getattr(le_fert, 'classes_', None))
+fert_classes = le_fert.classes_
 fert_labels = {i: fert_classes[i] for i in range(len(fert_classes))}
 
-# --- Streamlit UI ---
+# -------------------------
+# Load Dataset for Analytics
+# -------------------------
+data = pd.read_csv("cleaned_fertilizer_data.csv")
+data.columns = [col.strip() for col in data.columns]
 
-st.markdown("""
-    <div style='text-align:center;'>
-        <h1 style='font-size:2.8rem; margin-bottom:0;'>🌱 Fertilizer Recommendation App</h1>
-        <p style='font-size:1.2rem; color:#555;'>Enter your soil and crop details below to get the <b>best fertilizer recommendation</b> for your field.</p>
-    </div>
-""", unsafe_allow_html=True)
+# -------------------------
+# Sidebar Menu
+# -------------------------
+menu = st.sidebar.radio("📌 Navigation", ["🔮 Prediction", "📊 Analytics & Insights", "📈 Model Evaluation"])
 
-# Model Performance Section
-with st.expander("📊 Model Performance & Analysis", expanded=False):
+# ====================================================
+# 1. Prediction Section
+# ====================================================
+if menu == "🔮 Prediction":
+    st.title("🌱 Fertilizer Recommendation System")
+
     col1, col2 = st.columns(2)
+
     with col1:
-        st.subheader("🎯 Model Accuracy")
-        st.metric("Training Accuracy", f"{train_acc*100:.2f}%")
-        st.metric("Cross-Validation Score", f"{cv_scores.mean():.3f} ± {cv_scores.std():.3f}")
-        st.metric("Individual CV Scores", f"{', '.join([f'{score:.3f}' for score in cv_scores])}")
+        temperature = st.number_input("🌡️ Temperature (°C)", 0, 50, 25)
+        humidity = st.number_input("💧 Humidity (%)", 0, 100, 50)
+        moisture = st.number_input("🌊 Soil Moisture (%)", 0, 100, 30)
+        soil = st.selectbox("🌍 Soil Type", le_soil.classes_)
+
     with col2:
-        st.subheader("🔍 Feature Importance")
-        fig_importance = px.bar(
-            feature_importance, 
-            x='importance', 
-            y='feature',
-            orientation='h',
-            title="Feature Importance for Fertilizer Prediction"
-        )
-        st.plotly_chart(fig_importance, use_container_width=True)
+        crop = st.selectbox("🌾 Crop Type", le_crop.classes_)
+        nitrogen = st.number_input("🧪 Nitrogen (N)", 0, 150, 50)
+        potassium = st.number_input("🧪 Potassium (K)", 0, 150, 50)
+        phosphorous = st.number_input("🧪 Phosphorous (P)", 0, 150, 50)
 
-# Data Distribution
-with st.expander("📈 Data Distribution", expanded=False):
-    fert_counts = data['Fertilizer Name'].value_counts().sort_index()
-    fig_fert = px.pie(
-        values=fert_counts.values, 
-        names=list(fert_counts.index),
-        title="Fertilizer Distribution in Dataset"
-    )
-    st.plotly_chart(fig_fert, use_container_width=True)
+    if st.button("🔮 Predict Fertilizer"):
+        soil_enc = le_soil.transform([soil])[0]
+        crop_enc = le_crop.transform([crop])[0]
 
-# Main prediction form
-with st.form("fertilizer_form"):
-    st.markdown('<div class="main">', unsafe_allow_html=True)
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        nitrogen = st.number_input("🧪 Nitrogen (N)", min_value=0.0, max_value=200.0, value=50.0)
-        potassium = st.number_input("🧂 Potassium (K)", min_value=0.0, max_value=200.0, value=50.0)
-        phosphorous = st.number_input("🧬 Phosphorous (P)", min_value=0.0, max_value=200.0, value=50.0)
-    with col2:
-        temparature = st.number_input("🌡️ Temparature (°C)", min_value=0.0, max_value=50.0, value=25.0)
-        humidity = st.number_input("💧 Humidity (%)", min_value=0.0, max_value=100.0, value=50.0)
-        moisture = st.number_input("💧 Moisture (%)", min_value=0.0, max_value=100.0, value=40.0)
-    with col3:
-        soil_type = st.selectbox("🌱 Soil Type", soil_classes)
-        crop_type = st.selectbox("🌾 Crop Type", crop_classes)
-    submitted = st.form_submit_button("🔍 Predict Fertilizer")
-    st.markdown('</div>', unsafe_allow_html=True)
+        features = np.array([[temperature, humidity, moisture,
+                              soil_enc, crop_enc,
+                              nitrogen, potassium, phosphorous]])
 
-if submitted:
-    input_data = pd.DataFrame({
-        'Temparature': [temparature],
-        'Humidity': [humidity],
-        'Moisture': [moisture],
-        'Soil Type_enc': [le_soil.transform([soil_type])[0]],
-        'Crop Type_enc': [le_crop.transform([crop_type])[0]],
-        'Nitrogen': [nitrogen],
-        'Potassium': [potassium],
-        'Phosphorous': [phosphorous]
-    })
-    pred_enc = model.predict(input_data)[0]
-    pred_proba = model.predict_proba(input_data)[0]
-    pred_fert = fert_labels[pred_enc]
-    # Get top 3 predictions
-    top_3_indices = np.argsort(pred_proba)[-3:][::-1]
-    top_3_fertilizers = [fert_labels[int(i)] for i in top_3_indices]
-    top_3_probabilities = pred_proba[top_3_indices]
-    st.markdown(f"""
-        <div class='result-card'>
-            <span style='font-size:2rem;'>🌟</span><br>
-            <b>Recommended Fertilizer:</b><br>
-            <span style='font-size:1.7rem; color:#388e3c; font-weight:bold;'>{pred_fert}</span><br>
-            <span class='confidence'>Confidence: {pred_proba[pred_enc]*100:.1f}%</span>
-        </div>
-    """, unsafe_allow_html=True)
-    st.subheader("🏆 Top 3 Recommendations")
-    col1, col2, col3 = st.columns(3)
-    for i, (fert, prob) in enumerate(zip(top_3_fertilizers, top_3_probabilities)):
-        with [col1, col2, col3][i]:
-            st.metric(
-                f"{'🥇' if i==0 else '🥈' if i==1 else '🥉'} {fert}",
-                f"{prob*100:.1f}%"
-            )
-    st.info(f"📊 Model Performance:\n- Training Accuracy: {train_acc*100:.2f}%\n- Cross-validation accuracy: {cv_scores.mean()*100:.1f}% ± {cv_scores.std()*100:.1f}%")
+        # Get prediction probabilities
+        probs = model.predict_proba(features)[0]
 
-st.markdown("---")
+        # Top 3 recommendations
+        top3_idx = np.argsort(probs)[::-1][:3]
+        top3_ferts = [(fert_labels[i], probs[i]) for i in top3_idx]
+
+        st.success("🌟 Top 3 Fertilizer Recommendations:")
+
+        for rank, (fert, prob) in enumerate(top3_ferts, start=1):
+            st.write(f"**{rank}. {fert}** — Confidence: `{prob*100:.2f}%`")
+
+# ====================================================
+# 2. Analytics Section
+# ====================================================
+elif menu == "📊 Analytics & Insights":
+    st.title("📊 Fertilizer Dataset Analytics")
+
+    # Fertilizer Distribution
+    st.subheader("🌱 Fertilizer Distribution")
+    fig = px.histogram(data, x="Fertilizer Name", color="Fertilizer Name",
+                       title="Distribution of Fertilizers", text_auto=True)
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Soil vs Crop
+    st.subheader("🌍 Soil Type vs 🌾 Crop Type")
+    fig2 = px.scatter(data, x="Soil Type", y="Crop Type", color="Fertilizer Name",
+                      title="Soil Type vs Crop Type")
+    st.plotly_chart(fig2, use_container_width=True)
+
+    # Feature Importance
+    st.subheader("🔥 Feature Importance")
+    importances = model.feature_importances_
+    feat_names = ["Temperature", "Humidity", "Moisture", "Soil Type", "Crop Type", "Nitrogen", "Potassium", "Phosphorous"]
+    imp_df = pd.DataFrame({"Feature": feat_names, "Importance": importances})
+    fig3 = px.bar(imp_df.sort_values("Importance", ascending=False),
+                  x="Importance", y="Feature", orientation="h",
+                  title="Feature Importance")
+    st.plotly_chart(fig3, use_container_width=True)
+
+# ====================================================
+# 3. Model Evaluation
+# ====================================================
+elif menu == "📈 Model Evaluation":
+    st.title("📈 Model Accuracy & Evaluation")
+
+    # Encode categorical features
+    data["Soil Type_enc"] = le_soil.transform(data["Soil Type"])
+    data["Crop Type_enc"] = le_crop.transform(data["Crop Type"])
+
+    X = data[["Temparature", "Humidity", "Moisture", "Soil Type_enc", "Crop Type_enc",
+              "Nitrogen", "Potassium", "Phosphorous"]]
+    y = le_fert.transform(data["Fertilizer Name"])
+
+    # Predictions
+    y_pred = model.predict(X)
+
+    # Accuracy
+    acc = accuracy_score(y, y_pred)
+    st.metric("✅ Model Accuracy", f"{acc*100:.2f}%")
+
+    # Classification Report
+    st.subheader("📋 Classification Report")
+    report = classification_report(y, y_pred, target_names=le_fert.classes_, output_dict=True)
+    report_df = pd.DataFrame(report).transpose()
+    st.dataframe(report_df)
+
+    # Confusion Matrix
+    st.subheader("📊 Confusion Matrix")
+    cm = confusion_matrix(y, y_pred)
+    fig, ax = plt.subplots(figsize=(8,6))
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues",
+                xticklabels=le_fert.classes_,
+                yticklabels=le_fert.classes_, ax=ax)
+    ax.set_xlabel("Predicted")
+    ax.set_ylabel("Actual")
+    st.pyplot(fig)

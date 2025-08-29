@@ -1,0 +1,46 @@
+{
+    "train_accuracy": 0.6829067031848028,
+    "cv_scores": [
+        0.24868328651685392,
+        0.2514922752808989,
+        0.25052668539325845,
+        0.25160214204196296,
+        0.2455447282942674
+    ],
+    "cv_mean": 0.2495698235054483,
+    "cv_std": 0.002268438380311673,
+    "feature_importance": [
+        {
+            "feature": "Phosphorous",
+            "importance": 0.1528238371254708
+        },
+        {
+            "feature": "Nitrogen",
+            "importance": 0.15027904566433067
+        },
+        {
+            "feature": "Moisture",
+            "importance": 0.14999663131108057
+        },
+        {
+            "feature": "Humidity",
+            "importance": 0.12979393307115236
+        },
+        {
+            "feature": "Potassium",
+            "importance": 0.12213484802797826
+        },
+        {
+            "feature": "Temparature",
+            "importance": 0.1180262743222612
+        },
+        {
+            "feature": "Crop Type",
+            "importance": 0.10388966382261967
+        },
+        {
+            "feature": "Soil Type",
+            "importance": 0.07305576665510644
+        }
+    ]
+}
